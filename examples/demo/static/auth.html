@@ -6,30 +6,36 @@
 <title>WebAuthn Minimal Demo</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a1a;color:#e0e0e0}
-.card{width:100%;max-width:380px;padding:2rem;border:1px solid #333;border-radius:8px;background:#242424}
-h1{font-size:1.1rem;font-weight:600;margin-bottom:1.5rem;color:#fff}
-.btn{width:100%;padding:.7rem 1rem;border:none;border-radius:6px;font-size:.95rem;cursor:pointer;font-family:inherit;transition:opacity .15s}
-.btn-primary{background:#4c8cf8;color:#fff}
-.btn-secondary{background:#333;color:#e0e0e0;margin-top:.75rem}
-.btn:hover{opacity:.85}
-.btn:disabled{opacity:.4;cursor:default}
-input{width:100%;padding:.6rem .75rem;border:1px solid #444;border-radius:6px;background:#1a1a1a;color:#e0e0e0;font-size:.95rem;font-family:inherit;margin-bottom:.75rem}
-input:focus{outline:none;border-color:#4c8cf8}
-.msg{margin-top:1rem;font-size:.85rem;color:#888;line-height:1.5}
-.err{color:#f87171}
-.token-box{margin-top:1rem;padding:.75rem;background:#1a1a1a;border:1px solid #333;border-radius:6px;font-family:monospace;font-size:.8rem;word-break:break-all;color:#a3e635;user-select:all}
-.label{font-size:.8rem;color:#888;margin-bottom:.4rem}
-#copy-btn{margin-top:.5rem;padding:.4rem .8rem;font-size:.8rem;background:#333;color:#ccc;border:1px solid #444;border-radius:4px;cursor:pointer}
-#copy-btn:hover{background:#444}
+body{font-family:system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#121212;color:#bbb}
+.card{width:100%;max-width:360px;padding:2rem;border-radius:16px;background:#1e1e1e;box-shadow:0 10px 25px -5px rgba(0,0,0,0.5);border:1px solid #2a2a2a}
+h1{font-size:1.25rem;font-weight:600;margin-bottom:1.5rem;color:#fff;text-align:center;letter-spacing:-0.02em}
+h2{font-size:1rem;font-weight:500;margin-bottom:1.25rem;color:#eee}
+.btn{width:100%;padding:.75rem 1rem;border:none;border-radius:8px;font-size:.9rem;font-weight:500;cursor:pointer;font-family:inherit;transition:all .2s}
+.btn-primary{background:#3b82f6;color:#fff}
+.btn-primary:hover{background:#2563eb;transform:translateY(-1px)}
+.btn-secondary{background:#2d2d2d;color:#ccc;margin-top:.75rem}
+.btn-secondary:hover{background:#363636;color:#fff}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+input{width:100%;padding:.7rem .8rem;border:1px solid #333;border-radius:8px;background:#141414;color:#fff;font-size:.95rem;font-family:inherit;margin-bottom:1rem;transition:border-color .2s}
+input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,0.2)}
+.msg{margin-top:1rem;font-size:.85rem;color:#777;text-align:center;line-height:1.5}
+.err{color:#ef4444}
+.token-box{margin-top:.5rem;padding:.75rem;background:#000;border:1px solid #2a2a2a;border-radius:8px;font-family:ui-monospace,SFMono-Regular,monospace;font-size:.8rem;word-break:break-all;color:#84cc16;user-select:all}
+.label{font-size:.75rem;font-weight:500;color:#666;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em}
+#copy-btn{margin-top:.5rem;padding:.4rem .8rem;font-size:.75rem;background:#2d2d2d;color:#aaa;border:1px solid #3d3d3d;border-radius:6px;cursor:pointer;transition:all .2s}
+#copy-btn:hover{background:#3d3d3d;color:#fff}
 @media(prefers-color-scheme:light){
-  body{background:#f5f5f5;color:#222}
-  .card{background:#fff;border-color:#e0e0e0}
-  h1{color:#000}
-  input{background:#fff;border-color:#ccc;color:#222}
-  .btn-secondary{background:#eee;color:#333}
-  .token-box{background:#f9f9f9;border-color:#ddd;color:#166534}
-  #copy-btn{background:#eee;color:#444;border-color:#ccc}
+  body{background:#f3f4f6;color:#4b5563}
+  .card{background:#fff;border-color:#e5e7eb;box-shadow:0 10px 25px -5px rgba(0,0,0,0.1)}
+  h1{color:#111}
+  h2{color:#374151}
+  input{background:#fff;border-color:#d1d5db;color:#111}
+  .btn-secondary{background:#f3f4f6;color:#4b5563}
+  .btn-secondary:hover{background:#e5e7eb;color:#111}
+  .token-box{background:#f9fafb;border-color:#d1d5db;color:#166534}
+  #copy-btn{background:#f3f4f6;color:#6b7280;border-color:#d1d5db}
+  #copy-btn:hover{background:#e5e7eb;color:#111}
 }
 </style>
 </head>
@@ -40,7 +46,6 @@ input:focus{outline:none;border-color:#4c8cf8}
   <div id="section-signin">
     <button class="btn btn-primary" id="signin-btn">Sign in with passkey</button>
     <div class="msg" id="signin-msg"></div>
-    <div style="margin-top: 2rem; border-top: 1px solid #333; padding-top: 2rem"></div>
   </div>
 
   <div id="section-register">
@@ -49,7 +54,6 @@ input:focus{outline:none;border-color:#4c8cf8}
     <input type="text" id="username-input" autocomplete="username" value="">
     <button class="btn btn-primary" id="register-btn">Register</button>
     <div class="msg" id="register-msg"></div>
-    <div style="margin-top: 2rem; border-top: 1px solid #333; padding-top: 2rem"></div>
   </div>
 
   <div id="section-token" style="display:none">
