@@ -123,9 +123,9 @@ pub struct AuthChallenge {
 /// A registered passkey credential persisted in the database.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StoredCredential {
-    pub cred_id: String, // hex-encoded credential ID
-    pub x: String,       // hex-encoded P-256 x coordinate (32 bytes)
-    pub y: String,       // hex-encoded P-256 y coordinate (32 bytes)
+    pub cred_id: Vec<u8>,
+    pub x: [u8; 32],
+    pub y: [u8; 32],
     pub sign_count: u32,
 }
 
@@ -244,7 +244,7 @@ impl RelyingParty {
         let allow_credentials = credentials
             .iter()
             .map(|c| {
-                let id_b64 = Base64UrlUnpadded::encode_string(&hex_decode(&c.cred_id));
+                let id_b64 = Base64UrlUnpadded::encode_string(&c.cred_id);
                 AllowCredential {
                     cred_type: "public-key".into(),
                     id: id_b64,
@@ -265,6 +265,7 @@ impl RelyingParty {
         (options, auth_challenge)
     }
 
+    #[allow(deprecated)]
     /// Finish an authentication ceremony.
     /// Returns the matched credential with its sign_count updated to the new value.
     pub fn finish_authentication(
@@ -326,10 +327,9 @@ impl RelyingParty {
                 .as_str()
                 .ok_or_else(|| WebAuthnError::DecodeError("missing credential id".into()))?,
         )?;
-        let cred_id_hex = hex_encode(&cred_id_bytes);
         let cred = credentials
             .iter()
-            .find(|c| c.cred_id == cred_id_hex)
+            .find(|c| c.cred_id == cred_id_bytes)
             .ok_or(WebAuthnError::CredentialNotFound)?;
 
         // Verify ES256 signature over authData || SHA-256(clientDataJSON).
@@ -342,13 +342,9 @@ impl RelyingParty {
                 .as_str()
                 .ok_or_else(|| WebAuthnError::DecodeError("missing signature".into()))?,
         )?;
-        let x = hex_decode_32(&cred.x).map_err(WebAuthnError::DecodeError)?;
-        let y = hex_decode_32(&cred.y).map_err(WebAuthnError::DecodeError)?;
-
-        #[allow(deprecated)]
         let point = EncodedPoint::from_affine_coordinates(
-            FieldBytes::from_slice(&x),
-            FieldBytes::from_slice(&y),
+            FieldBytes::from_slice(&cred.x),
+            FieldBytes::from_slice(&cred.y),
             false,
         );
         let vk = VerifyingKey::from_encoded_point(&point)
@@ -362,7 +358,7 @@ impl RelyingParty {
         // Don't hard-fail: many platform authenticators always return 0.
         if cred.sign_count > 0 && sign_count <= cred.sign_count {
             tracing::warn!(
-                cred_id = %cred.cred_id,
+                cred_id = %hex_encode(&cred.cred_id),
                 stored = cred.sign_count,
                 received = sign_count,
                 "sign_count did not increase — possible authenticator clone"
@@ -371,8 +367,8 @@ impl RelyingParty {
 
         Ok(StoredCredential {
             cred_id: cred.cred_id.clone(),
-            x: cred.x.clone(),
-            y: cred.y.clone(),
+            x: cred.x,
+            y: cred.y,
             sign_count,
         })
     }
@@ -415,15 +411,15 @@ fn parse_auth_data_registration(
             "credentialId truncated".into(),
         ));
     }
-    let cred_id = hex_encode(&att[18..18 + cred_id_len]);
+    let cred_id = att[18..18 + cred_id_len].to_vec();
 
     let cose_bytes = &att[18 + cred_id_len..];
     let (x, y) = parse_cose_p256(cose_bytes)?;
 
     Ok(StoredCredential {
         cred_id,
-        x: hex_encode(&x),
-        y: hex_encode(&y),
+        x,
+        y,
         sign_count,
     })
 }
@@ -528,23 +524,6 @@ fn b64url_decode(s: &str) -> Result<Vec<u8>, WebAuthnError> {
     // Strip any trailing padding — WebAuthn uses unpadded base64url but be permissive.
     Base64UrlUnpadded::decode_vec(s.trim_end_matches('='))
         .map_err(|e| WebAuthnError::DecodeError(format!("base64url decode: {e}")))
-}
-
-fn hex_decode(s: &str) -> Vec<u8> {
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap_or(0))
-        .collect()
-}
-
-fn hex_decode_32(s: &str) -> Result<[u8; 32], String> {
-    let v = hex_decode(s);
-    if v.len() != 32 {
-        return Err(format!("expected 32 bytes, got {}", v.len()));
-    }
-    let mut a = [0u8; 32];
-    a.copy_from_slice(&v);
-    Ok(a)
 }
 
 fn random_bytes(n: usize) -> Vec<u8> {
@@ -725,7 +704,7 @@ mod tests {
         let authn = SoftAuthenticator::new();
 
         let cred = do_register(&rp, &authn);
-        assert_eq!(cred.cred_id, hex_encode(&authn.cred_id));
+        assert_eq!(cred.cred_id, authn.cred_id);
         assert_eq!(cred.sign_count, 0);
 
         let (auth_opts, auth_state) = rp.start_authentication(std::slice::from_ref(&cred));
