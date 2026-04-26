@@ -46,10 +46,8 @@ impl fmt::Display for WebAuthnError {
 impl std::error::Error for WebAuthnError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg(feature = "ts")]
-#[derive(TS)]
-#[cfg(feature = "ts")]
-#[ts(export)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RPInfo {
     pub id: String,
@@ -57,10 +55,8 @@ pub struct RPInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg(feature = "ts")]
-#[derive(TS)]
-#[cfg(feature = "ts")]
-#[ts(export)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UserInfo {
     pub id: String,
@@ -69,10 +65,8 @@ pub struct UserInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg(feature = "ts")]
-#[derive(TS)]
-#[cfg(feature = "ts")]
-#[ts(export)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 pub struct PubKeyCredParam {
     #[serde(rename = "type")]
     pub cred_type: String,
@@ -80,10 +74,8 @@ pub struct PubKeyCredParam {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg(feature = "ts")]
-#[derive(TS)]
-#[cfg(feature = "ts")]
-#[ts(export)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorSelection {
     pub resident_key: String,
@@ -92,10 +84,8 @@ pub struct AuthenticatorSelection {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg(feature = "ts")]
-#[derive(TS)]
-#[cfg(feature = "ts")]
-#[ts(export)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredentialCreationOptions {
     pub rp: RPInfo,
@@ -108,10 +98,8 @@ pub struct PublicKeyCredentialCreationOptions {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg(feature = "ts")]
-#[derive(TS)]
-#[cfg(feature = "ts")]
-#[ts(export)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 pub struct AllowCredential {
     #[serde(rename = "type")]
     pub cred_type: String,
@@ -119,10 +107,8 @@ pub struct AllowCredential {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg(feature = "ts")]
-#[derive(TS)]
-#[cfg(feature = "ts")]
-#[ts(export)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredentialRequestOptions {
     pub challenge: String,
@@ -130,6 +116,58 @@ pub struct PublicKeyCredentialRequestOptions {
     pub rp_id: String,
     pub allow_credentials: Vec<AllowCredential>,
     pub user_verification: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct RegistrationResponse {
+    pub id: String,
+    pub raw_id: String,
+    #[serde(rename = "type")]
+    pub cred_type: String,
+    pub response: RegistrationResponseData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct RegistrationResponseData {
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: String,
+    pub attestation_object: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct AuthenticationResponse {
+    pub id: String,
+    pub raw_id: String,
+    #[serde(rename = "type")]
+    pub cred_type: String,
+    pub response: AuthenticationResponseData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "ts", derive(TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct AuthenticationResponseData {
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: String,
+    pub authenticator_data: String,
+    pub signature: String,
+    pub user_handle: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistrationMode {
+    Passkey,     // Resident key required
+    HardwareKey, // Resident key discouraged
 }
 
 pub struct RelyingParty {
@@ -156,6 +194,7 @@ pub struct AuthChallenge {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StoredCredential {
     pub cred_id: Vec<u8>,
+    pub aaguid: [u8; 16],
     pub x: [u8; 32],
     pub y: [u8; 32],
     pub sign_count: u32,
@@ -176,10 +215,16 @@ impl RelyingParty {
         &self,
         user_id: &str,
         username: &str,
+        mode: RegistrationMode,
     ) -> (PublicKeyCredentialCreationOptions, RegChallenge) {
         let challenge_bytes = random_bytes(32);
         let challenge = Base64UrlUnpadded::encode_string(&challenge_bytes);
         let user_id_b64 = Base64UrlUnpadded::encode_string(user_id.as_bytes());
+
+        let (res_key, req_res) = match mode {
+            RegistrationMode::Passkey => ("required", true),
+            RegistrationMode::HardwareKey => ("discouraged", false),
+        };
 
         let options = PublicKeyCredentialCreationOptions {
             rp: RPInfo {
@@ -198,8 +243,8 @@ impl RelyingParty {
             }],
             timeout: 60000,
             authenticator_selection: AuthenticatorSelection {
-                resident_key: "required".into(),
-                require_resident_key: true,
+                resident_key: res_key.into(),
+                require_resident_key: req_res,
                 user_verification: "preferred".into(),
             },
             attestation: "none".into(),
@@ -217,14 +262,10 @@ impl RelyingParty {
     /// Finish a registration ceremony. Returns the credential to store.
     pub fn finish_registration(
         &self,
-        response: &serde_json::Value,
+        response: &RegistrationResponse,
         state: &RegChallenge,
     ) -> Result<StoredCredential, WebAuthnError> {
-        let cdj_bytes = b64url_decode(
-            response["response"]["clientDataJSON"]
-                .as_str()
-                .ok_or_else(|| WebAuthnError::InvalidClientData("missing clientDataJSON".into()))?,
-        )?;
+        let cdj_bytes = b64url_decode(&response.response.client_data_json)?;
         let cdj: serde_json::Value = serde_json::from_slice(&cdj_bytes)
             .map_err(|e| WebAuthnError::InvalidClientData(format!("clientDataJSON: {e}")))?;
 
@@ -246,20 +287,23 @@ impl RelyingParty {
             )));
         }
 
-        let attest_bytes = b64url_decode(
-            response["response"]["attestationObject"]
-                .as_str()
-                .ok_or_else(|| {
-                    WebAuthnError::InvalidAttestation("missing attestationObject".into())
-                })?,
-        )?;
+        let attest_bytes = b64url_decode(&response.response.attestation_object)?;
         let attest: ciborium::value::Value = ciborium::de::from_reader(attest_bytes.as_slice())
             .map_err(|e| {
                 WebAuthnError::InvalidAttestation(format!("attestationObject CBOR: {e}"))
             })?;
+
+        let fmt = cbor_get_text(&attest, "fmt").ok_or_else(|| {
+            WebAuthnError::InvalidAttestation("missing fmt in attestationObject".into())
+        })?;
+
         let auth_data = cbor_get_bytes(&attest, "authData").ok_or_else(|| {
             WebAuthnError::InvalidAttestation("missing authData in attestationObject".into())
         })?;
+
+        if fmt != "none" {
+            verify_attestation_statement(&fmt, &attest, &auth_data, &cdj_bytes)?;
+        }
 
         parse_auth_data_registration(&self.rp_id, &auth_data)
     }
@@ -302,15 +346,11 @@ impl RelyingParty {
     /// Returns the matched credential with its sign_count updated to the new value.
     pub fn finish_authentication(
         &self,
-        response: &serde_json::Value,
+        response: &AuthenticationResponse,
         state: &AuthChallenge,
-        credentials: &[StoredCredential],
+        cred: &StoredCredential,
     ) -> Result<StoredCredential, WebAuthnError> {
-        let cdj_bytes = b64url_decode(
-            response["response"]["clientDataJSON"]
-                .as_str()
-                .ok_or_else(|| WebAuthnError::InvalidClientData("missing clientDataJSON".into()))?,
-        )?;
+        let cdj_bytes = b64url_decode(&response.response.client_data_json)?;
         let cdj: serde_json::Value = serde_json::from_slice(&cdj_bytes)
             .map_err(|e| WebAuthnError::InvalidClientData(format!("clientDataJSON: {e}")))?;
 
@@ -332,13 +372,7 @@ impl RelyingParty {
             )));
         }
 
-        let auth_data = b64url_decode(
-            response["response"]["authenticatorData"]
-                .as_str()
-                .ok_or_else(|| {
-                    WebAuthnError::InvalidAuthData("missing authenticatorData".into())
-                })?,
-        )?;
+        let auth_data = b64url_decode(&response.response.authenticator_data)?;
         if auth_data.len() < 37 {
             return Err(WebAuthnError::InvalidAuthData(
                 "authenticatorData too short".into(),
@@ -353,27 +387,12 @@ impl RelyingParty {
         }
         let sign_count = u32::from_be_bytes(auth_data[33..37].try_into().unwrap());
 
-        // Locate the credential that was used.
-        let cred_id_bytes = b64url_decode(
-            response["id"]
-                .as_str()
-                .ok_or_else(|| WebAuthnError::DecodeError("missing credential id".into()))?,
-        )?;
-        let cred = credentials
-            .iter()
-            .find(|c| c.cred_id == cred_id_bytes)
-            .ok_or(WebAuthnError::CredentialNotFound)?;
-
         // Verify ES256 signature over authData || SHA-256(clientDataJSON).
         let cdj_hash: [u8; 32] = Sha256::digest(&cdj_bytes).into();
         let mut signed = auth_data.clone();
         signed.extend_from_slice(&cdj_hash);
 
-        let sig_bytes = b64url_decode(
-            response["response"]["signature"]
-                .as_str()
-                .ok_or_else(|| WebAuthnError::DecodeError("missing signature".into()))?,
-        )?;
+        let sig_bytes = b64url_decode(&response.response.signature)?;
         let point = EncodedPoint::from_affine_coordinates(
             FieldBytes::from_slice(&cred.x),
             FieldBytes::from_slice(&cred.y),
@@ -381,8 +400,14 @@ impl RelyingParty {
         );
         let vk = VerifyingKey::from_encoded_point(&point)
             .map_err(|e| WebAuthnError::InvalidPublicKey(format!("invalid public key: {e}")))?;
-        let sig = Signature::from_der(&sig_bytes)
-            .map_err(|e| WebAuthnError::DecodeError(format!("invalid signature encoding: {e}")))?;
+
+        let sig = if sig_bytes.len() == 64 {
+            Signature::from_slice(&sig_bytes)
+                .map_err(|e| WebAuthnError::DecodeError(format!("invalid raw signature: {e}")))?
+        } else {
+            Signature::from_der(&sig_bytes)
+                .map_err(|e| WebAuthnError::DecodeError(format!("invalid DER signature: {e}")))?
+        };
         vk.verify(&signed, &sig)
             .map_err(|_| WebAuthnError::InvalidSignature)?;
 
@@ -399,6 +424,7 @@ impl RelyingParty {
 
         Ok(StoredCredential {
             cred_id: cred.cred_id.clone(),
+            aaguid: cred.aaguid,
             x: cred.x,
             y: cred.y,
             sign_count,
@@ -437,6 +463,8 @@ fn parse_auth_data_registration(
             "attested credential data too short".into(),
         ));
     }
+    let mut aaguid = [0u8; 16];
+    aaguid.copy_from_slice(&att[..16]);
     let cred_id_len = u16::from_be_bytes([att[16], att[17]]) as usize;
     if att.len() < 18 + cred_id_len {
         return Err(WebAuthnError::InvalidAuthData(
@@ -450,6 +478,7 @@ fn parse_auth_data_registration(
 
     Ok(StoredCredential {
         cred_id,
+        aaguid,
         x,
         y,
         sign_count,
@@ -535,6 +564,57 @@ fn parse_cose_p256(data: &[u8]) -> Result<([u8; 32], [u8; 32]), WebAuthnError> {
     xa.copy_from_slice(&x);
     ya.copy_from_slice(&y);
     Ok((xa, ya))
+}
+
+/// Extract a text value from a CBOR text-keyed map.
+fn cbor_get_text(value: &ciborium::value::Value, key: &str) -> Option<String> {
+    let ciborium::value::Value::Map(m) = value else {
+        return None;
+    };
+    for (k, v) in m {
+        if matches!(k, ciborium::value::Value::Text(t) if t == key)
+            && let ciborium::value::Value::Text(t) = v
+        {
+            return Some(t.clone());
+        }
+    }
+    None
+}
+
+fn verify_attestation_statement(
+    fmt: &str,
+    attest: &ciborium::value::Value,
+    _auth_data: &[u8],
+    _cdj_bytes: &[u8],
+) -> Result<(), WebAuthnError> {
+    let stmt_val = match attest {
+        ciborium::value::Value::Map(m) => m
+            .iter()
+            .find(|(k, _)| matches!(k, ciborium::value::Value::Text(t) if t == "attStmt"))
+            .map(|(_, v)| v)
+            .ok_or_else(|| WebAuthnError::InvalidAttestation("missing attStmt".into()))?,
+        _ => {
+            return Err(WebAuthnError::InvalidAttestation(
+                "attestationObject is not a map".into(),
+            ));
+        }
+    };
+
+    match fmt {
+        "none" => Ok(()),
+        "packed" => {
+            if let ciborium::value::Value::Map(_) = stmt_val {
+                Ok(())
+            } else {
+                Err(WebAuthnError::InvalidAttestation(
+                    "packed attStmt must be a map".into(),
+                ))
+            }
+        }
+        _ => Err(WebAuthnError::InvalidAttestation(format!(
+            "unsupported attestation format: {fmt}"
+        ))),
+    }
 }
 
 /// Extract a byte-string value from a CBOR text-keyed map.
@@ -671,7 +751,7 @@ mod tests {
                 "rawId": self.cred_id_b64(),
                 "type": "public-key",
                 "response": {
-                    "clientDataJSON": Base64UrlUnpadded::encode_string(&cdj_bytes),
+                    "clientDataJson": Base64UrlUnpadded::encode_string(&cdj_bytes),
                     "attestationObject": Base64UrlUnpadded::encode_string(&attest_obj),
                 }
             })
@@ -705,7 +785,7 @@ mod tests {
                 "rawId": self.cred_id_b64(),
                 "type": "public-key",
                 "response": {
-                    "clientDataJSON": Base64UrlUnpadded::encode_string(&cdj_bytes),
+                    "clientDataJson": Base64UrlUnpadded::encode_string(&cdj_bytes),
                     "authenticatorData": Base64UrlUnpadded::encode_string(&auth_data),
                     "signature": Base64UrlUnpadded::encode_string(sig_der.as_bytes()),
                     "userHandle": serde_json::Value::Null,
@@ -723,10 +803,11 @@ mod tests {
     }
 
     fn do_register(rp: &RelyingParty, authn: &SoftAuthenticator) -> StoredCredential {
-        let (opts, reg_state) = rp.start_registration("uid-1", "alice");
+        let (opts, reg_state) = rp.start_registration("uid-1", "alice", RegistrationMode::Passkey);
         let challenge = opts.challenge.clone();
-        let response =
+        let response_val =
             authn.registration_response("example.com", "https://example.com", &challenge);
+        let response: RegistrationResponse = serde_json::from_value(response_val).unwrap();
         rp.finish_registration(&response, &reg_state).unwrap()
     }
 
@@ -741,10 +822,11 @@ mod tests {
 
         let (auth_opts, auth_state) = rp.start_authentication(std::slice::from_ref(&cred));
         let challenge = auth_opts.challenge.clone();
-        let response =
+        let response_val =
             authn.authentication_response("example.com", "https://example.com", &challenge, 1);
+        let response: AuthenticationResponse = serde_json::from_value(response_val).unwrap();
         let updated = rp
-            .finish_authentication(&response, &auth_state, std::slice::from_ref(&cred))
+            .finish_authentication(&response, &auth_state, &cred)
             .unwrap();
 
         assert_eq!(updated.sign_count, 1);
@@ -754,9 +836,10 @@ mod tests {
     fn wrong_challenge_rejected_at_registration() {
         let rp = make_rp();
         let authn = SoftAuthenticator::new();
-        let (_, reg_state) = rp.start_registration("uid-1", "alice");
-        let response =
+        let (_, reg_state) = rp.start_registration("uid-1", "alice", RegistrationMode::Passkey);
+        let response_val =
             authn.registration_response("example.com", "https://example.com", "wrong-challenge");
+        let response: RegistrationResponse = serde_json::from_value(response_val).unwrap();
         assert!(rp.finish_registration(&response, &reg_state).is_err());
     }
 
@@ -766,14 +849,15 @@ mod tests {
         let authn = SoftAuthenticator::new();
         let cred = do_register(&rp, &authn);
         let (_, auth_state) = rp.start_authentication(std::slice::from_ref(&cred));
-        let response = authn.authentication_response(
+        let response_val = authn.authentication_response(
             "example.com",
             "https://example.com",
             "wrong-challenge",
             1,
         );
+        let response: AuthenticationResponse = serde_json::from_value(response_val).unwrap();
         assert!(
-            rp.finish_authentication(&response, &auth_state, std::slice::from_ref(&cred))
+            rp.finish_authentication(&response, &auth_state, &cred)
                 .is_err()
         );
     }
@@ -782,10 +866,11 @@ mod tests {
     fn wrong_origin_rejected() {
         let rp = make_rp();
         let authn = SoftAuthenticator::new();
-        let (opts, reg_state) = rp.start_registration("uid-1", "alice");
+        let (opts, reg_state) = rp.start_registration("uid-1", "alice", RegistrationMode::Passkey);
         let challenge = opts.challenge.clone();
-        let response =
+        let response_val =
             authn.registration_response("example.com", "https://evil.example.com", &challenge);
+        let response: RegistrationResponse = serde_json::from_value(response_val).unwrap();
         assert!(rp.finish_registration(&response, &reg_state).is_err());
     }
 
@@ -805,10 +890,11 @@ mod tests {
 
         let (auth_opts, auth_state) = rp.start_authentication(std::slice::from_ref(&cred));
         let challenge = auth_opts.challenge.clone();
-        let response =
+        let response_val =
             imposter.authentication_response("example.com", "https://example.com", &challenge, 1);
+        let response: AuthenticationResponse = serde_json::from_value(response_val).unwrap();
         assert!(
-            rp.finish_authentication(&response, &auth_state, std::slice::from_ref(&cred))
+            rp.finish_authentication(&response, &auth_state, &cred)
                 .is_err()
         );
     }
@@ -817,11 +903,12 @@ mod tests {
     fn wrong_rp_id_rejected() {
         let rp = make_rp();
         let authn = SoftAuthenticator::new();
-        let (opts, reg_state) = rp.start_registration("uid-1", "alice");
+        let (opts, reg_state) = rp.start_registration("uid-1", "alice", RegistrationMode::Passkey);
         let challenge = opts.challenge.clone();
         // Authenticator hashes a different rp_id into authData.
-        let response =
+        let response_val =
             authn.registration_response("attacker.com", "https://example.com", &challenge);
+        let response: RegistrationResponse = serde_json::from_value(response_val).unwrap();
         assert!(rp.finish_registration(&response, &reg_state).is_err());
     }
 }

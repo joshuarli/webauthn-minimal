@@ -40,13 +40,15 @@ input:focus{outline:none;border-color:#4c8cf8}
   <div id="section-signin">
     <button class="btn btn-primary" id="signin-btn">Sign in with passkey</button>
     <div class="msg" id="signin-msg"></div>
+    <div style="margin-top: 2rem; border-top: 1px solid #333; padding-top: 2rem"></div>
   </div>
 
-  <div id="section-register" style="display:none">
+  <div id="section-register">
+    <h2 style="font-size: 1rem; margin-bottom: 1rem; color: #fff">Register New Key</h2>
     <div class="label">Username</div>
     <input type="text" id="username-input" autocomplete="username" value="">
-    <button class="btn btn-primary" id="register-btn">Register passkey</button>
-    <button class="btn btn-secondary" id="back-btn">Back</button>
+    <button class="btn btn-primary" id="register-btn">Register</button>
+    <button class="btn btn-secondary" id="back-btn">Back to Sign-in</button>
     <div class="msg" id="register-msg"></div>
   </div>
 
