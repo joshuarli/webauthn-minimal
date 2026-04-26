@@ -7,6 +7,40 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use p256::{EncodedPoint, FieldBytes};
 use sha2::{Digest, Sha256};
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebAuthnError {
+    InvalidClientData(String),
+    ChallengeMismatch,
+    OriginMismatch(String),
+    InvalidAttestation(String),
+    InvalidAuthData(String),
+    CredentialNotFound,
+    InvalidSignature,
+    InvalidPublicKey(String),
+    InvalidCoseKey(String),
+    DecodeError(String),
+}
+
+impl fmt::Display for WebAuthnError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidClientData(e) => write!(f, "invalid client data: {e}"),
+            Self::ChallengeMismatch => write!(f, "challenge mismatch"),
+            Self::OriginMismatch(o) => write!(f, "origin mismatch: {o}"),
+            Self::InvalidAttestation(e) => write!(f, "invalid attestation: {e}"),
+            Self::InvalidAuthData(e) => write!(f, "invalid auth data: {e}"),
+            Self::CredentialNotFound => write!(f, "credential not found"),
+            Self::InvalidSignature => write!(f, "signature verification failed"),
+            Self::InvalidPublicKey(e) => write!(f, "invalid public key: {e}"),
+            Self::InvalidCoseKey(e) => write!(f, "invalid COSE key: {e}"),
+            Self::DecodeError(e) => write!(f, "decode error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for WebAuthnError {}
 
 pub struct RelyingParty {
     rp_id: String,
@@ -90,37 +124,47 @@ impl RelyingParty {
         &self,
         response: &serde_json::Value,
         state: &RegChallenge,
-    ) -> Result<StoredCredential, String> {
+    ) -> Result<StoredCredential, WebAuthnError> {
         let cdj_bytes = b64url_decode(
             response["response"]["clientDataJSON"]
                 .as_str()
-                .ok_or("missing clientDataJSON")?,
+                .ok_or_else(|| WebAuthnError::InvalidClientData("missing clientDataJSON".into()))?,
         )?;
-        let cdj: serde_json::Value =
-            serde_json::from_slice(&cdj_bytes).map_err(|e| format!("clientDataJSON: {e}"))?;
+        let cdj: serde_json::Value = serde_json::from_slice(&cdj_bytes)
+            .map_err(|e| WebAuthnError::InvalidClientData(format!("clientDataJSON: {e}")))?;
 
         if cdj["type"].as_str() != Some("webauthn.create") {
-            return Err("wrong clientData type".into());
+            return Err(WebAuthnError::InvalidClientData(
+                "wrong clientData type".into(),
+            ));
         }
-        let got = cdj["challenge"]
-            .as_str()
-            .ok_or("missing challenge in clientData")?;
+        let got = cdj["challenge"].as_str().ok_or_else(|| {
+            WebAuthnError::InvalidClientData("missing challenge in clientData".into())
+        })?;
         if !ct_eq(got.as_bytes(), state.challenge.as_bytes()) {
-            return Err("challenge mismatch".into());
+            return Err(WebAuthnError::ChallengeMismatch);
         }
         if cdj["origin"].as_str() != Some(&self.rp_origin) {
-            return Err(format!("origin mismatch: {:?}", cdj["origin"]));
+            return Err(WebAuthnError::OriginMismatch(format!(
+                "{:?}",
+                cdj["origin"]
+            )));
         }
 
         let attest_bytes = b64url_decode(
             response["response"]["attestationObject"]
                 .as_str()
-                .ok_or("missing attestationObject")?,
+                .ok_or_else(|| {
+                    WebAuthnError::InvalidAttestation("missing attestationObject".into())
+                })?,
         )?;
         let attest: ciborium::value::Value = ciborium::de::from_reader(attest_bytes.as_slice())
-            .map_err(|e| format!("attestationObject CBOR: {e}"))?;
-        let auth_data =
-            cbor_get_bytes(&attest, "authData").ok_or("missing authData in attestationObject")?;
+            .map_err(|e| {
+                WebAuthnError::InvalidAttestation(format!("attestationObject CBOR: {e}"))
+            })?;
+        let auth_data = cbor_get_bytes(&attest, "authData").ok_or_else(|| {
+            WebAuthnError::InvalidAttestation("missing authData in attestationObject".into())
+        })?;
 
         parse_auth_data_registration(&self.rp_id, &auth_data)
     }
@@ -160,52 +204,65 @@ impl RelyingParty {
         response: &serde_json::Value,
         state: &AuthChallenge,
         credentials: &[StoredCredential],
-    ) -> Result<StoredCredential, String> {
+    ) -> Result<StoredCredential, WebAuthnError> {
         let cdj_bytes = b64url_decode(
             response["response"]["clientDataJSON"]
                 .as_str()
-                .ok_or("missing clientDataJSON")?,
+                .ok_or_else(|| WebAuthnError::InvalidClientData("missing clientDataJSON".into()))?,
         )?;
-        let cdj: serde_json::Value =
-            serde_json::from_slice(&cdj_bytes).map_err(|e| format!("clientDataJSON: {e}"))?;
+        let cdj: serde_json::Value = serde_json::from_slice(&cdj_bytes)
+            .map_err(|e| WebAuthnError::InvalidClientData(format!("clientDataJSON: {e}")))?;
 
         if cdj["type"].as_str() != Some("webauthn.get") {
-            return Err("wrong clientData type".into());
+            return Err(WebAuthnError::InvalidClientData(
+                "wrong clientData type".into(),
+            ));
         }
-        let got = cdj["challenge"]
-            .as_str()
-            .ok_or("missing challenge in clientData")?;
+        let got = cdj["challenge"].as_str().ok_or_else(|| {
+            WebAuthnError::InvalidClientData("missing challenge in clientData".into())
+        })?;
         if !ct_eq(got.as_bytes(), state.challenge.as_bytes()) {
-            return Err("challenge mismatch".into());
+            return Err(WebAuthnError::ChallengeMismatch);
         }
         if cdj["origin"].as_str() != Some(&self.rp_origin) {
-            return Err(format!("origin mismatch: {:?}", cdj["origin"]));
+            return Err(WebAuthnError::OriginMismatch(format!(
+                "{:?}",
+                cdj["origin"]
+            )));
         }
 
         let auth_data = b64url_decode(
             response["response"]["authenticatorData"]
                 .as_str()
-                .ok_or("missing authenticatorData")?,
+                .ok_or_else(|| {
+                    WebAuthnError::InvalidAuthData("missing authenticatorData".into())
+                })?,
         )?;
         if auth_data.len() < 37 {
-            return Err("authenticatorData too short".into());
+            return Err(WebAuthnError::InvalidAuthData(
+                "authenticatorData too short".into(),
+            ));
         }
         let rp_id_hash: [u8; 32] = Sha256::digest(self.rp_id.as_bytes()).into();
         if auth_data[..32] != rp_id_hash {
-            return Err("rpIdHash mismatch".into());
+            return Err(WebAuthnError::InvalidAuthData("rpIdHash mismatch".into()));
         }
         if auth_data[32] & 0x01 == 0 {
-            return Err("user not present".into());
+            return Err(WebAuthnError::InvalidAuthData("user not present".into()));
         }
         let sign_count = u32::from_be_bytes(auth_data[33..37].try_into().unwrap());
 
         // Locate the credential that was used.
-        let cred_id_bytes = b64url_decode(response["id"].as_str().ok_or("missing credential id")?)?;
+        let cred_id_bytes = b64url_decode(
+            response["id"]
+                .as_str()
+                .ok_or_else(|| WebAuthnError::DecodeError("missing credential id".into()))?,
+        )?;
         let cred_id_hex = hex_encode(&cred_id_bytes);
         let cred = credentials
             .iter()
             .find(|c| c.cred_id == cred_id_hex)
-            .ok_or("credential not found")?;
+            .ok_or(WebAuthnError::CredentialNotFound)?;
 
         // Verify ES256 signature over authData || SHA-256(clientDataJSON).
         let cdj_hash: [u8; 32] = Sha256::digest(&cdj_bytes).into();
@@ -215,21 +272,21 @@ impl RelyingParty {
         let sig_bytes = b64url_decode(
             response["response"]["signature"]
                 .as_str()
-                .ok_or("missing signature")?,
+                .ok_or_else(|| WebAuthnError::DecodeError("missing signature".into()))?,
         )?;
-        let x = hex_decode_32(&cred.x)?;
-        let y = hex_decode_32(&cred.y)?;
+        let x = hex_decode_32(&cred.x).map_err(WebAuthnError::DecodeError)?;
+        let y = hex_decode_32(&cred.y).map_err(WebAuthnError::DecodeError)?;
         let point = EncodedPoint::from_affine_coordinates(
             FieldBytes::from_slice(&x),
             FieldBytes::from_slice(&y),
             false,
         );
         let vk = VerifyingKey::from_encoded_point(&point)
-            .map_err(|e| format!("invalid public key: {e}"))?;
+            .map_err(|e| WebAuthnError::InvalidPublicKey(format!("invalid public key: {e}")))?;
         let sig = Signature::from_der(&sig_bytes)
-            .map_err(|e| format!("invalid signature encoding: {e}"))?;
+            .map_err(|e| WebAuthnError::DecodeError(format!("invalid signature encoding: {e}")))?;
         vk.verify(&signed, &sig)
-            .map_err(|_| "signature verification failed".to_string())?;
+            .map_err(|_| WebAuthnError::InvalidSignature)?;
 
         // Warn on sign_count regression — indicates possible authenticator cloning.
         // Don't hard-fail: many platform authenticators always return 0.
@@ -252,32 +309,41 @@ impl RelyingParty {
 }
 
 /// Parse authenticatorData during registration, extract credential ID and P-256 public key.
-fn parse_auth_data_registration(rp_id: &str, auth_data: &[u8]) -> Result<StoredCredential, String> {
+fn parse_auth_data_registration(
+    rp_id: &str,
+    auth_data: &[u8],
+) -> Result<StoredCredential, WebAuthnError> {
     // Layout: [32 rpIdHash][1 flags][4 signCount][attested cred data when AT flag set]
     if auth_data.len() < 37 {
-        return Err("authData too short".into());
+        return Err(WebAuthnError::InvalidAuthData("authData too short".into()));
     }
     let rp_id_hash: [u8; 32] = Sha256::digest(rp_id.as_bytes()).into();
     if auth_data[..32] != rp_id_hash {
-        return Err("rpIdHash mismatch".into());
+        return Err(WebAuthnError::InvalidAuthData("rpIdHash mismatch".into()));
     }
     let flags = auth_data[32];
     if flags & 0x01 == 0 {
-        return Err("user not present".into());
+        return Err(WebAuthnError::InvalidAuthData("user not present".into()));
     }
     if flags & 0x40 == 0 {
-        return Err("no attested credential data present".into());
+        return Err(WebAuthnError::InvalidAuthData(
+            "no attested credential data present".into(),
+        ));
     }
     let sign_count = u32::from_be_bytes(auth_data[33..37].try_into().unwrap());
 
     // Attested credential data: [16 AAGUID][2 credIdLen][N credId][CBOR coseKey]
     let att = &auth_data[37..];
     if att.len() < 18 {
-        return Err("attested credential data too short".into());
+        return Err(WebAuthnError::InvalidAuthData(
+            "attested credential data too short".into(),
+        ));
     }
     let cred_id_len = u16::from_be_bytes([att[16], att[17]]) as usize;
     if att.len() < 18 + cred_id_len {
-        return Err("credentialId truncated".into());
+        return Err(WebAuthnError::InvalidAuthData(
+            "credentialId truncated".into(),
+        ));
     }
     let cred_id = hex_encode(&att[18..18 + cred_id_len]);
 
@@ -293,12 +359,16 @@ fn parse_auth_data_registration(rp_id: &str, auth_data: &[u8]) -> Result<StoredC
 }
 
 /// Parse a COSE_Key map for an EC2/P-256 key (alg=-7), returning (x, y) as 32-byte arrays.
-fn parse_cose_p256(data: &[u8]) -> Result<([u8; 32], [u8; 32]), String> {
-    let value: ciborium::value::Value =
-        ciborium::de::from_reader(data).map_err(|e| format!("COSE key CBOR: {e}"))?;
+fn parse_cose_p256(data: &[u8]) -> Result<([u8; 32], [u8; 32]), WebAuthnError> {
+    let value: ciborium::value::Value = ciborium::de::from_reader(data)
+        .map_err(|e| WebAuthnError::InvalidCoseKey(format!("COSE key CBOR: {e}")))?;
     let map = match value {
         ciborium::value::Value::Map(m) => m,
-        _ => return Err("COSE key is not a CBOR map".into()),
+        _ => {
+            return Err(WebAuthnError::InvalidCoseKey(
+                "COSE key is not a CBOR map".into(),
+            ));
+        }
     };
 
     let mut kty: Option<i64> = None;
@@ -341,24 +411,26 @@ fn parse_cose_p256(data: &[u8]) -> Result<([u8; 32], [u8; 32]), String> {
     }
 
     if kty != Some(2) {
-        return Err(format!(
+        return Err(WebAuthnError::InvalidCoseKey(format!(
             "unsupported COSE key type: {kty:?} (expected 2/EC2)"
-        ));
+        )));
     }
     if crv != Some(1) {
-        return Err(format!(
+        return Err(WebAuthnError::InvalidCoseKey(format!(
             "unsupported COSE curve: {crv:?} (expected 1/P-256)"
-        ));
+        )));
     }
 
-    let x = x_bytes.ok_or("COSE key missing x coordinate")?;
-    let y = y_bytes.ok_or("COSE key missing y coordinate")?;
+    let x = x_bytes
+        .ok_or_else(|| WebAuthnError::InvalidCoseKey("COSE key missing x coordinate".into()))?;
+    let y = y_bytes
+        .ok_or_else(|| WebAuthnError::InvalidCoseKey("COSE key missing y coordinate".into()))?;
     if x.len() != 32 || y.len() != 32 {
-        return Err(format!(
+        return Err(WebAuthnError::InvalidCoseKey(format!(
             "unexpected coordinate length: x={}, y={}",
             x.len(),
             y.len()
-        ));
+        )));
     }
     let mut xa = [0u8; 32];
     let mut ya = [0u8; 32];
@@ -374,17 +446,18 @@ fn cbor_get_bytes(value: &ciborium::value::Value, key: &str) -> Option<Vec<u8>> 
     };
     for (k, v) in m {
         if matches!(k, ciborium::value::Value::Text(t) if t == key)
-            && let ciborium::value::Value::Bytes(b) = v {
-                return Some(b.clone());
-            }
+            && let ciborium::value::Value::Bytes(b) = v
+        {
+            return Some(b.clone());
+        }
     }
     None
 }
 
-fn b64url_decode(s: &str) -> Result<Vec<u8>, String> {
+fn b64url_decode(s: &str) -> Result<Vec<u8>, WebAuthnError> {
     // Strip any trailing padding — WebAuthn uses unpadded base64url but be permissive.
     Base64UrlUnpadded::decode_vec(s.trim_end_matches('='))
-        .map_err(|e| format!("base64url decode: {e}"))
+        .map_err(|e| WebAuthnError::DecodeError(format!("base64url decode: {e}")))
 }
 
 fn hex_decode(s: &str) -> Vec<u8> {
