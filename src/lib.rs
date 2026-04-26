@@ -6,6 +6,7 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use p256::{EncodedPoint, FieldBytes};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
 
@@ -42,6 +43,63 @@ impl fmt::Display for WebAuthnError {
 
 impl std::error::Error for WebAuthnError {}
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RPInfo {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserInfo {
+    pub id: String,
+    pub name: String,
+    pub display_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PubKeyCredParam {
+    #[serde(rename = "type")]
+    pub cred_type: String,
+    pub alg: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AuthenticatorSelection {
+    pub resident_key: String,
+    #[serde(rename = "requireResidentKey")]
+    pub require_resident_key: bool,
+    pub user_verification: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicKeyCredentialCreationOptions {
+    pub rp: RPInfo,
+    pub user: UserInfo,
+    pub challenge: String,
+    pub pub_key_cred_params: Vec<PubKeyCredParam>,
+    pub timeout: u32,
+    pub authenticator_selection: AuthenticatorSelection,
+    pub attestation: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AllowCredential {
+    #[serde(rename = "type")]
+    pub cred_type: String,
+    pub id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicKeyCredentialRequestOptions {
+    pub challenge: String,
+    pub timeout: u32,
+    pub rp_id: String,
+    pub allow_credentials: Vec<AllowCredential>,
+    pub user_verification: String,
+}
+
 pub struct RelyingParty {
     rp_id: String,
     rp_origin: String,
@@ -49,7 +107,7 @@ pub struct RelyingParty {
 }
 
 /// Challenge state stored in the session DB during a registration ceremony.
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RegChallenge {
     pub challenge: String, // base64url-encoded random bytes
     pub user_id: String,
@@ -57,13 +115,13 @@ pub struct RegChallenge {
 }
 
 /// Challenge state stored in the session DB during an authentication ceremony.
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AuthChallenge {
     pub challenge: String, // base64url-encoded random bytes
 }
 
 /// A registered passkey credential persisted in the database.
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StoredCredential {
     pub cred_id: String, // hex-encoded credential ID
     pub x: String,       // hex-encoded P-256 x coordinate (32 bytes)
@@ -81,42 +139,47 @@ impl RelyingParty {
     }
 
     /// Begin a registration ceremony.
-    /// Returns (PublicKeyCredentialCreationOptions JSON, challenge state to store in session).
+    /// Returns (PublicKeyCredentialCreationOptions, challenge state to store in session).
     pub fn start_registration(
         &self,
         user_id: &str,
         username: &str,
-    ) -> (serde_json::Value, RegChallenge) {
+    ) -> (PublicKeyCredentialCreationOptions, RegChallenge) {
         let challenge_bytes = random_bytes(32);
         let challenge = Base64UrlUnpadded::encode_string(&challenge_bytes);
         let user_id_b64 = Base64UrlUnpadded::encode_string(user_id.as_bytes());
 
-        let options = serde_json::json!({
-            "rp": {"id": &self.rp_id, "name": &self.rp_name},
-            "user": {
-                "id": user_id_b64,
-                "name": username,
-                "displayName": username,
+        let options = PublicKeyCredentialCreationOptions {
+            rp: RPInfo {
+                id: self.rp_id.clone(),
+                name: self.rp_name.clone(),
             },
-            "challenge": &challenge,
-            "pubKeyCredParams": [{"type": "public-key", "alg": -7}],
-            "timeout": 60000,
-            "authenticatorSelection": {
-                "residentKey": "required",
-                "requireResidentKey": true,
-                "userVerification": "preferred",
+            user: UserInfo {
+                id: user_id_b64,
+                name: username.to_string(),
+                display_name: username.to_string(),
             },
-            "attestation": "none",
-        });
+            challenge: challenge.clone(),
+            pub_key_cred_params: vec![PubKeyCredParam {
+                cred_type: "public-key".into(),
+                alg: -7,
+            }],
+            timeout: 60000,
+            authenticator_selection: AuthenticatorSelection {
+                resident_key: "required".into(),
+                require_resident_key: true,
+                user_verification: "preferred".into(),
+            },
+            attestation: "none".into(),
+        };
 
-        (
-            options,
-            RegChallenge {
-                challenge,
-                user_id: user_id.to_string(),
-                username: username.to_string(),
-            },
-        )
+        let reg_challenge = RegChallenge {
+            challenge,
+            user_id: user_id.to_string(),
+            username: username.to_string(),
+        };
+
+        (options, reg_challenge)
     }
 
     /// Finish a registration ceremony. Returns the credential to store.
@@ -170,31 +233,36 @@ impl RelyingParty {
     }
 
     /// Begin an authentication ceremony.
-    /// Returns (PublicKeyCredentialRequestOptions JSON, challenge state to store in session).
+    /// Returns (PublicKeyCredentialRequestOptions, challenge state to store in session).
     pub fn start_authentication(
         &self,
         credentials: &[StoredCredential],
-    ) -> (serde_json::Value, AuthChallenge) {
+    ) -> (PublicKeyCredentialRequestOptions, AuthChallenge) {
         let challenge_bytes = random_bytes(32);
         let challenge = Base64UrlUnpadded::encode_string(&challenge_bytes);
 
-        let allow: Vec<serde_json::Value> = credentials
+        let allow_credentials = credentials
             .iter()
             .map(|c| {
                 let id_b64 = Base64UrlUnpadded::encode_string(&hex_decode(&c.cred_id));
-                serde_json::json!({"type": "public-key", "id": id_b64})
+                AllowCredential {
+                    cred_type: "public-key".into(),
+                    id: id_b64,
+                }
             })
             .collect();
 
-        let options = serde_json::json!({
-            "challenge": &challenge,
-            "timeout": 60000,
-            "rpId": &self.rp_id,
-            "allowCredentials": allow,
-            "userVerification": "preferred",
-        });
+        let options = PublicKeyCredentialRequestOptions {
+            challenge: challenge.clone(),
+            timeout: 60000,
+            rp_id: self.rp_id.clone(),
+            allow_credentials,
+            user_verification: "preferred".into(),
+        };
 
-        (options, AuthChallenge { challenge })
+        let auth_challenge = AuthChallenge { challenge };
+
+        (options, auth_challenge)
     }
 
     /// Finish an authentication ceremony.
@@ -276,6 +344,8 @@ impl RelyingParty {
         )?;
         let x = hex_decode_32(&cred.x).map_err(WebAuthnError::DecodeError)?;
         let y = hex_decode_32(&cred.y).map_err(WebAuthnError::DecodeError)?;
+
+        #[allow(deprecated)]
         let point = EncodedPoint::from_affine_coordinates(
             FieldBytes::from_slice(&x),
             FieldBytes::from_slice(&y),
@@ -536,7 +606,7 @@ mod tests {
                 &ciborium::value::Value::Map(vec![
                     (cbor_int(1), cbor_int(2)),  // kty: EC2
                     (cbor_int(3), cbor_int(-7)), // alg: ES256
-                    (cbor_int(-1), cbor_int(1)), // crv: P-256
+                    (cbor_int(-1), cbor_int(1)), // crv: P-256,
                     (cbor_int(-2), ciborium::value::Value::Bytes(x)),
                     (cbor_int(-3), ciborium::value::Value::Bytes(y)),
                 ]),
@@ -611,7 +681,7 @@ mod tests {
 
             let cdj = serde_json::json!({"type": "webauthn.get", "challenge": challenge, "origin": origin});
             let cdj_bytes = serde_json::to_vec(&cdj).unwrap();
-            let cdj_hash: [u8; 32] = sha2::Sha256::digest(&cdj_bytes).into();
+            let cdj_hash: [u8; 32] = Sha256::digest(&cdj_bytes).into();
 
             let mut signed = auth_data.clone();
             signed.extend_from_slice(&cdj_hash);
@@ -643,7 +713,7 @@ mod tests {
 
     fn do_register(rp: &RelyingParty, authn: &SoftAuthenticator) -> StoredCredential {
         let (opts, reg_state) = rp.start_registration("uid-1", "alice");
-        let challenge = opts["challenge"].as_str().unwrap().to_string();
+        let challenge = opts.challenge.clone();
         let response =
             authn.registration_response("example.com", "https://example.com", &challenge);
         rp.finish_registration(&response, &reg_state).unwrap()
@@ -658,12 +728,12 @@ mod tests {
         assert_eq!(cred.cred_id, hex_encode(&authn.cred_id));
         assert_eq!(cred.sign_count, 0);
 
-        let (auth_opts, auth_state) = rp.start_authentication(&[cred.clone()]);
-        let challenge = auth_opts["challenge"].as_str().unwrap().to_string();
+        let (auth_opts, auth_state) = rp.start_authentication(std::slice::from_ref(&cred));
+        let challenge = auth_opts.challenge.clone();
         let response =
             authn.authentication_response("example.com", "https://example.com", &challenge, 1);
         let updated = rp
-            .finish_authentication(&response, &auth_state, &[cred])
+            .finish_authentication(&response, &auth_state, std::slice::from_ref(&cred))
             .unwrap();
 
         assert_eq!(updated.sign_count, 1);
@@ -684,7 +754,7 @@ mod tests {
         let rp = make_rp();
         let authn = SoftAuthenticator::new();
         let cred = do_register(&rp, &authn);
-        let (_, auth_state) = rp.start_authentication(&[cred.clone()]);
+        let (_, auth_state) = rp.start_authentication(std::slice::from_ref(&cred));
         let response = authn.authentication_response(
             "example.com",
             "https://example.com",
@@ -692,7 +762,7 @@ mod tests {
             1,
         );
         assert!(
-            rp.finish_authentication(&response, &auth_state, &[cred])
+            rp.finish_authentication(&response, &auth_state, std::slice::from_ref(&cred))
                 .is_err()
         );
     }
@@ -702,7 +772,7 @@ mod tests {
         let rp = make_rp();
         let authn = SoftAuthenticator::new();
         let (opts, reg_state) = rp.start_registration("uid-1", "alice");
-        let challenge = opts["challenge"].as_str().unwrap().to_string();
+        let challenge = opts.challenge.clone();
         let response =
             authn.registration_response("example.com", "https://evil.example.com", &challenge);
         assert!(rp.finish_registration(&response, &reg_state).is_err());
@@ -722,12 +792,12 @@ mod tests {
             cred_id: authn.cred_id.clone(),
         };
 
-        let (auth_opts, auth_state) = rp.start_authentication(&[cred.clone()]);
-        let challenge = auth_opts["challenge"].as_str().unwrap().to_string();
+        let (auth_opts, auth_state) = rp.start_authentication(std::slice::from_ref(&cred));
+        let challenge = auth_opts.challenge.clone();
         let response =
             imposter.authentication_response("example.com", "https://example.com", &challenge, 1);
         assert!(
-            rp.finish_authentication(&response, &auth_state, &[cred])
+            rp.finish_authentication(&response, &auth_state, std::slice::from_ref(&cred))
                 .is_err()
         );
     }
@@ -737,7 +807,7 @@ mod tests {
         let rp = make_rp();
         let authn = SoftAuthenticator::new();
         let (opts, reg_state) = rp.start_registration("uid-1", "alice");
-        let challenge = opts["challenge"].as_str().unwrap().to_string();
+        let challenge = opts.challenge.clone();
         // Authenticator hashes a different rp_id into authData.
         let response =
             authn.registration_response("attacker.com", "https://example.com", &challenge);
