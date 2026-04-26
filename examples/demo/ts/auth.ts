@@ -1,7 +1,7 @@
 import { 
     PublicKeyCredentialCreationOptions, 
     PublicKeyCredentialRequestOptions 
-} from "./types";
+} from "@webauthn-minimal/types";
 
 const toB64url = (buf: ArrayBuffer) => {
     const bytes = new Uint8Array(buf);

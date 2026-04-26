@@ -9,6 +9,7 @@ use p256::{EncodedPoint, FieldBytes};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
+#[cfg(feature = "ts")]
 use ts_rs::TS;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +45,10 @@ impl fmt::Display for WebAuthnError {
 
 impl std::error::Error for WebAuthnError {}
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg(feature = "ts")]
+#[derive(TS)]
+#[cfg(feature = "ts")]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RPInfo {
@@ -52,7 +56,10 @@ pub struct RPInfo {
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg(feature = "ts")]
+#[derive(TS)]
+#[cfg(feature = "ts")]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct UserInfo {
@@ -61,7 +68,10 @@ pub struct UserInfo {
     pub display_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg(feature = "ts")]
+#[derive(TS)]
+#[cfg(feature = "ts")]
 #[ts(export)]
 pub struct PubKeyCredParam {
     #[serde(rename = "type")]
@@ -69,7 +79,10 @@ pub struct PubKeyCredParam {
     pub alg: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg(feature = "ts")]
+#[derive(TS)]
+#[cfg(feature = "ts")]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorSelection {
@@ -78,7 +91,10 @@ pub struct AuthenticatorSelection {
     pub user_verification: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg(feature = "ts")]
+#[derive(TS)]
+#[cfg(feature = "ts")]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredentialCreationOptions {
@@ -91,7 +107,10 @@ pub struct PublicKeyCredentialCreationOptions {
     pub attestation: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg(feature = "ts")]
+#[derive(TS)]
+#[cfg(feature = "ts")]
 #[ts(export)]
 pub struct AllowCredential {
     #[serde(rename = "type")]
@@ -99,7 +118,10 @@ pub struct AllowCredential {
     pub id: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg(feature = "ts")]
+#[derive(TS)]
+#[cfg(feature = "ts")]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredentialRequestOptions {

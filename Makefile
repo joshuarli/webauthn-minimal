@@ -1,13 +1,9 @@
-.PHONY: demo test build-demo gen-types
+.PHONY: types
 
-test:
-	cargo test
+types:
+	mkdir -p ts
+	TS_OUTPUT_PATH=ts/index.ts cargo run --example gen-types --features ts
 
-gen-types:
-	cargo run --example gen-types
-
-build-demo: gen-types
+demo:
 	esbuild examples/demo/ts/auth.ts --bundle --outfile=examples/demo/static/auth.js
-
-demo: build-demo
-	cargo run --example demo
+	cargo run --example demo --features ts
