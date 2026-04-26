@@ -9,6 +9,7 @@ use p256::{EncodedPoint, FieldBytes};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
+use ts_rs::TS;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WebAuthnError {
@@ -43,35 +44,42 @@ impl fmt::Display for WebAuthnError {
 
 impl std::error::Error for WebAuthnError {}
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
 pub struct RPInfo {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
 pub struct UserInfo {
     pub id: String,
     pub name: String,
     pub display_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[ts(export)]
 pub struct PubKeyCredParam {
     #[serde(rename = "type")]
     pub cred_type: String,
     pub alg: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthenticatorSelection {
     pub resident_key: String,
-    #[serde(rename = "requireResidentKey")]
     pub require_resident_key: bool,
     pub user_verification: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredentialCreationOptions {
     pub rp: RPInfo,
@@ -83,14 +91,16 @@ pub struct PublicKeyCredentialCreationOptions {
     pub attestation: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[ts(export)]
 pub struct AllowCredential {
     #[serde(rename = "type")]
     pub cred_type: String,
     pub id: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredentialRequestOptions {
     pub challenge: String,
