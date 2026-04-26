@@ -48,6 +48,10 @@ const ui = {
         document.getElementById("section-token")!.style.display = "block";
         document.getElementById("token-value")!.textContent = token;
     },
+    showSection: (id: string) => {
+        document.getElementById("section-signin")!.style.display = id === "signin" ? "block" : "none";
+        document.getElementById("section-register")!.style.display = id === "register" ? "block" : "none";
+    },
 };
 
 async function api(url: string, body: any = {}) {
@@ -115,6 +119,7 @@ async function doRegister() {
             credential: encodeCred(cred) 
         });
         if (!vOk) throw new Error(vData.error || "Registration failed");
+        localStorage.setItem("has-passkey", "true");
         ui.showToken(vData.token);
     } catch (e: any) {
         ui.setMsg("register-msg", e.message || String(e), true);
@@ -124,10 +129,13 @@ async function doRegister() {
 
 document.getElementById("signin-btn")!.addEventListener("click", doAuthenticate);
 document.getElementById("register-btn")!.addEventListener("click", doRegister);
-document.getElementById("back-btn")!.addEventListener("click", () => {
-    document.getElementById("section-register")!.style.display = "none";
-    document.getElementById("section-signin")!.style.display = "block";
-});
+
+if (localStorage.getItem("has-passkey") === "true") {
+    ui.showSection("signin");
+} else {
+    ui.showSection("register");
+}
+
 document.getElementById("copy-btn")!.addEventListener("click", async () => {
     const token = document.getElementById("token-value")!.textContent;
     if (token) {
