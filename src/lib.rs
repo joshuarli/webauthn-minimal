@@ -75,7 +75,14 @@ impl RelyingParty {
             "attestation": "none",
         });
 
-        (options, RegChallenge { challenge, user_id: user_id.to_string(), username: username.to_string() })
+        (
+            options,
+            RegChallenge {
+                challenge,
+                user_id: user_id.to_string(),
+                username: username.to_string(),
+            },
+        )
     }
 
     /// Finish a registration ceremony. Returns the credential to store.
@@ -85,7 +92,9 @@ impl RelyingParty {
         state: &RegChallenge,
     ) -> Result<StoredCredential, String> {
         let cdj_bytes = b64url_decode(
-            response["response"]["clientDataJSON"].as_str().ok_or("missing clientDataJSON")?,
+            response["response"]["clientDataJSON"]
+                .as_str()
+                .ok_or("missing clientDataJSON")?,
         )?;
         let cdj: serde_json::Value =
             serde_json::from_slice(&cdj_bytes).map_err(|e| format!("clientDataJSON: {e}"))?;
@@ -93,7 +102,9 @@ impl RelyingParty {
         if cdj["type"].as_str() != Some("webauthn.create") {
             return Err("wrong clientData type".into());
         }
-        let got = cdj["challenge"].as_str().ok_or("missing challenge in clientData")?;
+        let got = cdj["challenge"]
+            .as_str()
+            .ok_or("missing challenge in clientData")?;
         if !ct_eq(got.as_bytes(), state.challenge.as_bytes()) {
             return Err("challenge mismatch".into());
         }
@@ -102,7 +113,9 @@ impl RelyingParty {
         }
 
         let attest_bytes = b64url_decode(
-            response["response"]["attestationObject"].as_str().ok_or("missing attestationObject")?,
+            response["response"]["attestationObject"]
+                .as_str()
+                .ok_or("missing attestationObject")?,
         )?;
         let attest: ciborium::value::Value = ciborium::de::from_reader(attest_bytes.as_slice())
             .map_err(|e| format!("attestationObject CBOR: {e}"))?;
@@ -149,7 +162,9 @@ impl RelyingParty {
         credentials: &[StoredCredential],
     ) -> Result<StoredCredential, String> {
         let cdj_bytes = b64url_decode(
-            response["response"]["clientDataJSON"].as_str().ok_or("missing clientDataJSON")?,
+            response["response"]["clientDataJSON"]
+                .as_str()
+                .ok_or("missing clientDataJSON")?,
         )?;
         let cdj: serde_json::Value =
             serde_json::from_slice(&cdj_bytes).map_err(|e| format!("clientDataJSON: {e}"))?;
@@ -157,7 +172,9 @@ impl RelyingParty {
         if cdj["type"].as_str() != Some("webauthn.get") {
             return Err("wrong clientData type".into());
         }
-        let got = cdj["challenge"].as_str().ok_or("missing challenge in clientData")?;
+        let got = cdj["challenge"]
+            .as_str()
+            .ok_or("missing challenge in clientData")?;
         if !ct_eq(got.as_bytes(), state.challenge.as_bytes()) {
             return Err("challenge mismatch".into());
         }
@@ -166,7 +183,9 @@ impl RelyingParty {
         }
 
         let auth_data = b64url_decode(
-            response["response"]["authenticatorData"].as_str().ok_or("missing authenticatorData")?,
+            response["response"]["authenticatorData"]
+                .as_str()
+                .ok_or("missing authenticatorData")?,
         )?;
         if auth_data.len() < 37 {
             return Err("authenticatorData too short".into());
@@ -181,8 +200,7 @@ impl RelyingParty {
         let sign_count = u32::from_be_bytes(auth_data[33..37].try_into().unwrap());
 
         // Locate the credential that was used.
-        let cred_id_bytes =
-            b64url_decode(response["id"].as_str().ok_or("missing credential id")?)?;
+        let cred_id_bytes = b64url_decode(response["id"].as_str().ok_or("missing credential id")?)?;
         let cred_id_hex = hex_encode(&cred_id_bytes);
         let cred = credentials
             .iter()
@@ -195,17 +213,23 @@ impl RelyingParty {
         signed.extend_from_slice(&cdj_hash);
 
         let sig_bytes = b64url_decode(
-            response["response"]["signature"].as_str().ok_or("missing signature")?,
+            response["response"]["signature"]
+                .as_str()
+                .ok_or("missing signature")?,
         )?;
         let x = hex_decode_32(&cred.x)?;
         let y = hex_decode_32(&cred.y)?;
-        let point =
-            EncodedPoint::from_affine_coordinates(FieldBytes::from_slice(&x), FieldBytes::from_slice(&y), false);
+        let point = EncodedPoint::from_affine_coordinates(
+            FieldBytes::from_slice(&x),
+            FieldBytes::from_slice(&y),
+            false,
+        );
         let vk = VerifyingKey::from_encoded_point(&point)
             .map_err(|e| format!("invalid public key: {e}"))?;
         let sig = Signature::from_der(&sig_bytes)
             .map_err(|e| format!("invalid signature encoding: {e}"))?;
-        vk.verify(&signed, &sig).map_err(|_| "signature verification failed".to_string())?;
+        vk.verify(&signed, &sig)
+            .map_err(|_| "signature verification failed".to_string())?;
 
         // Warn on sign_count regression — indicates possible authenticator cloning.
         // Don't hard-fail: many platform authenticators always return 0.
@@ -288,8 +312,20 @@ fn parse_cose_p256(data: &[u8]) -> Result<([u8; 32], [u8; 32]), String> {
             _ => None,
         };
         match key_i {
-            Some(1) => kty = if let ciborium::value::Value::Integer(i) = v { i64::try_from(i).ok() } else { None },
-            Some(-1) => crv = if let ciborium::value::Value::Integer(i) = v { i64::try_from(i).ok() } else { None },
+            Some(1) => {
+                kty = if let ciborium::value::Value::Integer(i) = v {
+                    i64::try_from(i).ok()
+                } else {
+                    None
+                }
+            }
+            Some(-1) => {
+                crv = if let ciborium::value::Value::Integer(i) = v {
+                    i64::try_from(i).ok()
+                } else {
+                    None
+                }
+            }
             Some(-2) => {
                 if let ciborium::value::Value::Bytes(b) = v {
                     x_bytes = Some(b);
@@ -305,16 +341,24 @@ fn parse_cose_p256(data: &[u8]) -> Result<([u8; 32], [u8; 32]), String> {
     }
 
     if kty != Some(2) {
-        return Err(format!("unsupported COSE key type: {kty:?} (expected 2/EC2)"));
+        return Err(format!(
+            "unsupported COSE key type: {kty:?} (expected 2/EC2)"
+        ));
     }
     if crv != Some(1) {
-        return Err(format!("unsupported COSE curve: {crv:?} (expected 1/P-256)"));
+        return Err(format!(
+            "unsupported COSE curve: {crv:?} (expected 1/P-256)"
+        ));
     }
 
     let x = x_bytes.ok_or("COSE key missing x coordinate")?;
     let y = y_bytes.ok_or("COSE key missing y coordinate")?;
     if x.len() != 32 || y.len() != 32 {
-        return Err(format!("unexpected coordinate length: x={}, y={}", x.len(), y.len()));
+        return Err(format!(
+            "unexpected coordinate length: x={}, y={}",
+            x.len(),
+            y.len()
+        ));
     }
     let mut xa = [0u8; 32];
     let mut ya = [0u8; 32];
@@ -325,13 +369,14 @@ fn parse_cose_p256(data: &[u8]) -> Result<([u8; 32], [u8; 32]), String> {
 
 /// Extract a byte-string value from a CBOR text-keyed map.
 fn cbor_get_bytes(value: &ciborium::value::Value, key: &str) -> Option<Vec<u8>> {
-    let ciborium::value::Value::Map(m) = value else { return None };
+    let ciborium::value::Value::Map(m) = value else {
+        return None;
+    };
     for (k, v) in m {
-        if matches!(k, ciborium::value::Value::Text(t) if t == key) {
-            if let ciborium::value::Value::Bytes(b) = v {
+        if matches!(k, ciborium::value::Value::Text(t) if t == key)
+            && let ciborium::value::Value::Bytes(b) = v {
                 return Some(b.clone());
             }
-        }
     }
     None
 }
@@ -381,8 +426,8 @@ fn hex_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p256::ecdsa::{SigningKey, Signature, signature::Signer};
     use p256::SecretKey;
+    use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 
     fn make_rp() -> RelyingParty {
         RelyingParty::new("example.com", "https://example.com", "Example")
@@ -416,9 +461,9 @@ mod tests {
             let mut cbor = Vec::new();
             ciborium::ser::into_writer(
                 &ciborium::value::Value::Map(vec![
-                    (cbor_int(1), cbor_int(2)),   // kty: EC2
-                    (cbor_int(3), cbor_int(-7)),  // alg: ES256
-                    (cbor_int(-1), cbor_int(1)),  // crv: P-256
+                    (cbor_int(1), cbor_int(2)),  // kty: EC2
+                    (cbor_int(3), cbor_int(-7)), // alg: ES256
+                    (cbor_int(-1), cbor_int(1)), // crv: P-256
                     (cbor_int(-2), ciborium::value::Value::Bytes(x)),
                     (cbor_int(-3), ciborium::value::Value::Bytes(y)),
                 ]),
@@ -442,7 +487,12 @@ mod tests {
             auth_data
         }
 
-        fn registration_response(&self, rp_id: &str, origin: &str, challenge: &str) -> serde_json::Value {
+        fn registration_response(
+            &self,
+            rp_id: &str,
+            origin: &str,
+            challenge: &str,
+        ) -> serde_json::Value {
             let auth_data = self.make_auth_data_with_cred(rp_id);
 
             let mut attest_obj = Vec::new();
@@ -450,7 +500,10 @@ mod tests {
                 &ciborium::value::Value::Map(vec![
                     (cbor_text("fmt"), cbor_text("none")),
                     (cbor_text("attStmt"), ciborium::value::Value::Map(vec![])),
-                    (cbor_text("authData"), ciborium::value::Value::Bytes(auth_data)),
+                    (
+                        cbor_text("authData"),
+                        ciborium::value::Value::Bytes(auth_data),
+                    ),
                 ]),
                 &mut attest_obj,
             )
@@ -518,7 +571,8 @@ mod tests {
     fn do_register(rp: &RelyingParty, authn: &SoftAuthenticator) -> StoredCredential {
         let (opts, reg_state) = rp.start_registration("uid-1", "alice");
         let challenge = opts["challenge"].as_str().unwrap().to_string();
-        let response = authn.registration_response("example.com", "https://example.com", &challenge);
+        let response =
+            authn.registration_response("example.com", "https://example.com", &challenge);
         rp.finish_registration(&response, &reg_state).unwrap()
     }
 
@@ -533,8 +587,11 @@ mod tests {
 
         let (auth_opts, auth_state) = rp.start_authentication(&[cred.clone()]);
         let challenge = auth_opts["challenge"].as_str().unwrap().to_string();
-        let response = authn.authentication_response("example.com", "https://example.com", &challenge, 1);
-        let updated = rp.finish_authentication(&response, &auth_state, &[cred]).unwrap();
+        let response =
+            authn.authentication_response("example.com", "https://example.com", &challenge, 1);
+        let updated = rp
+            .finish_authentication(&response, &auth_state, &[cred])
+            .unwrap();
 
         assert_eq!(updated.sign_count, 1);
     }
@@ -544,7 +601,8 @@ mod tests {
         let rp = make_rp();
         let authn = SoftAuthenticator::new();
         let (_, reg_state) = rp.start_registration("uid-1", "alice");
-        let response = authn.registration_response("example.com", "https://example.com", "wrong-challenge");
+        let response =
+            authn.registration_response("example.com", "https://example.com", "wrong-challenge");
         assert!(rp.finish_registration(&response, &reg_state).is_err());
     }
 
@@ -554,8 +612,16 @@ mod tests {
         let authn = SoftAuthenticator::new();
         let cred = do_register(&rp, &authn);
         let (_, auth_state) = rp.start_authentication(&[cred.clone()]);
-        let response = authn.authentication_response("example.com", "https://example.com", "wrong-challenge", 1);
-        assert!(rp.finish_authentication(&response, &auth_state, &[cred]).is_err());
+        let response = authn.authentication_response(
+            "example.com",
+            "https://example.com",
+            "wrong-challenge",
+            1,
+        );
+        assert!(
+            rp.finish_authentication(&response, &auth_state, &[cred])
+                .is_err()
+        );
     }
 
     #[test]
@@ -564,7 +630,8 @@ mod tests {
         let authn = SoftAuthenticator::new();
         let (opts, reg_state) = rp.start_registration("uid-1", "alice");
         let challenge = opts["challenge"].as_str().unwrap().to_string();
-        let response = authn.registration_response("example.com", "https://evil.example.com", &challenge);
+        let response =
+            authn.registration_response("example.com", "https://evil.example.com", &challenge);
         assert!(rp.finish_registration(&response, &reg_state).is_err());
     }
 
@@ -584,8 +651,12 @@ mod tests {
 
         let (auth_opts, auth_state) = rp.start_authentication(&[cred.clone()]);
         let challenge = auth_opts["challenge"].as_str().unwrap().to_string();
-        let response = imposter.authentication_response("example.com", "https://example.com", &challenge, 1);
-        assert!(rp.finish_authentication(&response, &auth_state, &[cred]).is_err());
+        let response =
+            imposter.authentication_response("example.com", "https://example.com", &challenge, 1);
+        assert!(
+            rp.finish_authentication(&response, &auth_state, &[cred])
+                .is_err()
+        );
     }
 
     #[test]
@@ -595,7 +666,8 @@ mod tests {
         let (opts, reg_state) = rp.start_registration("uid-1", "alice");
         let challenge = opts["challenge"].as_str().unwrap().to_string();
         // Authenticator hashes a different rp_id into authData.
-        let response = authn.registration_response("attacker.com", "https://example.com", &challenge);
+        let response =
+            authn.registration_response("attacker.com", "https://example.com", &challenge);
         assert!(rp.finish_registration(&response, &reg_state).is_err());
     }
 }
