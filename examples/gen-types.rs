@@ -23,7 +23,14 @@ fn main() {
             .expect("failed to export PublicKeyCredentialRequestOptions"),
     );
 
+    // Remove imports because we are concatenating everything into a single file
+    let filtered_content: String = content
+        .lines()
+        .filter(|line| !line.trim().starts_with("import type"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
     output
-        .write_all(content.as_bytes())
+        .write_all(filtered_content.as_bytes())
         .expect("failed to write types");
 }

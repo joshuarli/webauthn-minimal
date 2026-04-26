@@ -1,9 +1,9 @@
 .PHONY: types
 
 types:
-	mkdir -p ts
-	TS_OUTPUT_PATH=ts/index.ts cargo run --example gen-types --features ts
+	mkdir -p examples/demo/frontend/src
+	TS_OUTPUT_PATH=examples/demo/frontend/src/types.ts cargo run --example gen-types --features ts
 
 demo:
-	esbuild examples/demo/ts/auth.ts --bundle --outfile=examples/demo/static/auth.js
+	cd examples/demo/frontend && npm install && npm run build
 	cargo run --example demo --features ts

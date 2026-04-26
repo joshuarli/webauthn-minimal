@@ -4,12 +4,12 @@ use std::sync::{Arc, Mutex};
 use tiny_http::{Header, Method, Response, Server};
 use uuid::Uuid;
 use webauthn_minimal::{
-    AuthChallenge, AuthenticationResponse, RegChallenge, RelyingParty,
-    StoredCredential,
+    AuthChallenge, AuthenticationResponse, RegChallenge, RelyingParty, StoredCredential,
 };
 
-static AUTH_HTML: &str = include_str!("static/auth.html");
-static AUTH_JS: &str = include_str!("static/auth.js");
+static AUTH_HTML: &str = include_str!("frontend/index.html");
+static AUTH_JS: &str = include_str!("frontend/dist/bundle.js");
+static AUTH_CSS: &str = include_str!("frontend/src/style.css");
 
 struct Db {
     users: HashMap<String, String>,
@@ -73,7 +73,9 @@ fn main() {
 
         let response = match (method, url.as_str()) {
             (&Method::Get, "/") | (&Method::Get, "/auth") => html(AUTH_HTML),
-            (&Method::Get, "/auth.js") => Response::from_string(AUTH_JS).with_header(
+            (&Method::Get, "/style.css") => Response::from_string(AUTH_CSS)
+                .with_header(Header::from_bytes(b"Content-Type", b"text/css").unwrap()),
+            (&Method::Get, "/bundle.js") => Response::from_string(AUTH_JS).with_header(
                 Header::from_bytes(b"Content-Type", b"application/javascript").unwrap(),
             ),
             (&Method::Post, "/auth/register/options") => {
